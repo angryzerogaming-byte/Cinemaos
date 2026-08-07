@@ -2,7 +2,9 @@ package com.cinemaos.tv
 
 import android.annotation.SuppressLint
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.webkit.*
 import android.widget.ProgressBar
@@ -12,6 +14,12 @@ class MainActivity : FragmentActivity() {
 
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
+
+    // --- Virtual Pointer Variables ---
+    private var isPointerMode = false
+    private var cursorX = 500f
+    private var cursorY = 500f
+    private val cursorSpeed = 35f
 
     private val dpadJS = """
         (function() {
@@ -76,8 +84,10 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        
         progressBar = findViewById(R.id.progressBar)
         webView = findViewById(R.id.webView)
+        
         setupWebView()
         webView.loadUrl("https://cinemaos.live")
     }
@@ -118,26 +128,76 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    // --- Combined Input Handling ---
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        val direction = when (keyCode) {
-            KeyEvent.KEYCODE_DPAD_UP    -> "up"
-            KeyEvent.KEYCODE_DPAD_DOWN  -> "down"
-            KeyEvent.KEYCODE_DPAD_LEFT  -> "left"
-            KeyEvent.KEYCODE_DPAD_RIGHT -> "right"
-            else -> null
-        }
-        if (direction != null) {
-            webView.evaluateJavascript("window.dpadMove('$direction');", null)
+        val cursorView = findViewById<View>(R.id.virtual_cursor)
+
+        // 1. Toggle Button: Press MENU to switch modes
+        if (keyCode == KeyEvent.KEYCODE_MENU) {
+            isPointerMode = !isPointerMode
+            cursorView?.visibility = if (isPointerMode) View.VISIBLE else View.GONE
             return true
         }
-        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
-            webView.evaluateJavascript("window.dpadClick();", null)
-            return true
+
+        // 2. If Pointer Mode is ON, move the red dot
+        if (isPointerMode) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_UP -> { cursorY -= cursorSpeed; updateCursorPosition(cursorView); return true }
+                KeyEvent.KEYCODE_DPAD_DOWN -> { cursorY += cursorSpeed; updateCursorPosition(cursorView); return true }
+                KeyEvent.KEYCODE_DPAD_LEFT -> { cursorX -= cursorSpeed; updateCursorPosition(cursorView); return true }
+                KeyEvent.KEYCODE_DPAD_RIGHT -> { cursorX += cursorSpeed; updateCursorPosition(cursorView); return true }
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> { simulateClick(cursorX, cursorY); return true }
+            }
+        } 
+        // 3. If Pointer Mode is OFF, use your original JS Web Navigation
+        else {
+            val direction = when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_UP    -> "up"
+                KeyEvent.KEYCODE_DPAD_DOWN  -> "down"
+                KeyEvent.KEYCODE_DPAD_LEFT  -> "left"
+                KeyEvent.KEYCODE_DPAD_RIGHT -> "right"
+                else -> null
+            }
+            if (direction != null) {
+                webView.evaluateJavascript("window.dpadMove('$direction');", null)
+                return true
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+                webView.evaluateJavascript("window.dpadClick();", null)
+                return true
+            }
         }
+
+        // 4. Handle the Back button normally
         if (keyCode == KeyEvent.KEYCODE_BACK) {
-            if (webView.canGoBack()) { webView.goBack(); return true }
+            if (webView.canGoBack()) { 
+                webView.goBack()
+                return true 
+            }
         }
+        
         return super.onKeyDown(keyCode, event)
+    }
+
+    // --- Pointer Visual and Touch Logic ---
+    private fun updateCursorPosition(cursorView: View?) {
+        if (cursorView == null) return
+        cursorView.x = cursorX
+        cursorView.y = cursorY
+    }
+
+    private fun simulateClick(x: Float, y: Float) {
+        val downTime = SystemClock.uptimeMillis()
+        val eventTime = SystemClock.uptimeMillis()
+        
+        val downEvent = MotionEvent.obtain(downTime, eventTime, MotionEvent.ACTION_DOWN, x, y, 0)
+        window.decorView.dispatchTouchEvent(downEvent)
+        
+        val upEvent = MotionEvent.obtain(downTime, eventTime + 50, MotionEvent.ACTION_UP, x, y, 0)
+        window.decorView.dispatchTouchEvent(upEvent)
+        
+        downEvent.recycle()
+        upEvent.recycle()
     }
 
     override fun onResume() { super.onResume(); webView.onResume() }
