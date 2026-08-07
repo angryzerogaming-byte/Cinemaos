@@ -21,4 +21,12 @@
         android:progressTint="#e50914"
         android:visibility="gone" />
 
+    <View
+        android:id="@+id/virtual_cursor"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:background="#FF0000" 
+        android:elevation="100dp"
+        android:translationZ="100dp" />
+    
 </FrameLayout>
